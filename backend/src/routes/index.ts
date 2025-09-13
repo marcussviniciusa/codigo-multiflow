@@ -47,6 +47,7 @@ import flowDefaultRoutes from "./flowDefaultRoutes";
 import webHook from "./webHookRoutes";
 import flowBuilder from "./flowBuilderRoutes";
 import flowCampaignRoutes from "./flowCampaignRoutes";
+import webhookLinkRoutes from "./webhookLinkRoutes";
 
 import ChatController from "../controllers/ChatController";
 import PlantaoRoutes from "./plantaoRoutes";
@@ -102,6 +103,7 @@ routes.use(flowDefaultRoutes);
 routes.use(webHook);
 routes.use(flowBuilder);
 routes.use(flowCampaignRoutes);
+routes.use(webhookLinkRoutes);
 routes.use(PlantaoRoutes);
 
 routes.post("/chats/backfill", ChatController.backfillChats);

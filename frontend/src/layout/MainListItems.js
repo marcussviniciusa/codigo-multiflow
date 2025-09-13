@@ -907,6 +907,13 @@ const MainListItems = ({ collapsed, drawerClose }) => {
                 primary={"Fluxo de conversa"}
                 icon={<ShapeLine />}
               />
+              
+              <ListItemLink
+                to="/webhook-links"
+                primary={"Webhook Links"}
+                icon={<Webhook />}
+                tooltip={collapsed}
+              />
             </List>
           </Collapse>
         </>

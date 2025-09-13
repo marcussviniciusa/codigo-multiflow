@@ -60,6 +60,8 @@ import TicketFinalizationReason from "../models/TicketFinalizationReason";
 import PresetWebhookModel from "../models/PresetWebhook";
 import WhatsappLidMap from "../models/WhatsapplidMap";
 import Plantao from "../models/Plantao";
+import WebhookLink from "../models/WebhookLink";
+import WebhookLinkLog from "../models/WebhookLinkLog";
 
 // eslint-disable-next-line
 const dbConfig = require("../config/database");
@@ -128,6 +130,8 @@ const models = [
   BirthdaySettings,
   WhatsappLidMap,
   Plantao,
+  WebhookLink,
+  WebhookLinkLog,
 ];
 
 sequelize.addModels(models);

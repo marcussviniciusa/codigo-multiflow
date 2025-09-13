@@ -20,7 +20,8 @@ Multiflow is a WhatsApp Business automation platform consisting of 4 microservic
 - **Message Queue**: Redis with Bull for job processing
 - **File Storage**: Local filesystem with public folder structure
 - **WhatsApp Integration**: Baileys library for unofficial WhatsApp Web API
-- **Models**: Located in `src/models/` (Company, User, Ticket, Message, Contact, etc.)
+- **Webhook System**: Payment platform integrations with Flow Builder automation
+- **Models**: Located in `src/models/` (Company, User, Ticket, Message, Contact, WebhookLink, etc.)
 - **Services**: Business logic in various service directories under `src/services/`
 
 ### Frontend (React.js)
@@ -155,6 +156,7 @@ Use `multiflow_deploy/deploy_fastalk.sh` for containerized deployment with Docke
 
 - **WhatsApp Business**: Both unofficial (Baileys) and official (Meta API) integrations
 - **Payment Processing**: Stripe, MercadoPago, Asaas, GerenciaNet
+- **Payment Webhooks**: Kiwify, Hotmart, Braip, Monetizze, Cacto, Perfect Pay, Eduzz integrations
 - **External Systems**: Chatwoot, N8N, CRM webhooks, Typebot
 - **AI Services**: OpenAI, Google Dialogflow integration
 - **File Processing**: FFmpeg for audio/video, Puppeteer for PDF generation
@@ -182,3 +184,41 @@ Default ports:
 - **OpenSSL Legacy**: Frontend requires `--openssl-legacy-provider` flag for Node.js compatibility
 - **Socket Connections**: Frontend connects to backend via Socket.io for real-time features
 - **Audio Transcription**: Requires FFmpeg system installation and proper file permissions
+
+## Webhook System
+
+### Overview
+The platform includes a comprehensive webhook system for payment platform integrations:
+
+- **Webhook Links Management**: Create unique webhook URLs for each payment platform
+- **Flow Builder Integration**: Associate webhooks with specific automation flows
+- **Multi-Platform Support**: 7 payment platforms supported (Kiwify, Hotmart, Braip, Monetizze, Cacto, Perfect Pay, Eduzz)
+- **Variable System**: Automatic extraction and injection of payment data into flows
+- **Logging & Monitoring**: Complete audit trail of webhook events
+
+### Key Components
+
+#### Backend Services
+- **WebhookLink Model**: Manages webhook configurations and URLs
+- **PaymentDataExtractor**: Standardizes data from different payment platforms
+- **ProcessWebhookPaymentService**: Main webhook processing logic
+- **Global Variables**: Payment data injected into `global.flowVariables` for flow usage
+
+#### Frontend Interface
+- **Webhook Links Page**: Complete CRUD interface for webhook management
+- **Variable Selector**: Component for selecting payment variables in Flow Builder
+- **Statistics Dashboard**: Monitoring webhook usage and success rates
+
+### Variable Formats
+- **Webhook Variables**: `${variable_name}` format for payment data
+- **System Variables**: `{{variable_name}}` format for platform data
+- **Available Data**: Customer info, product details, transaction data, payment methods
+
+### Usage Flow
+1. Create webhook link in admin panel
+2. Configure webhook URL in payment platform
+3. Payment events trigger associated Flow Builder
+4. Variables automatically available in flow messages
+5. Complete automation of payment-based communications
+
+For detailed implementation information, see `WEBHOOK_SYSTEM_IMPLEMENTATION.md`.

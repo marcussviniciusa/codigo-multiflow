@@ -16,12 +16,14 @@ import Typography from "@material-ui/core/Typography";
 import IconButton from "@material-ui/core/IconButton";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import CircularProgress from "@material-ui/core/CircularProgress";
+import { Code as CodeIcon } from "@material-ui/icons";
 
 import { i18n } from "../../translate/i18n";
 
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import { Stack } from "@mui/material";
+import FlowBuilderVariableSelector from "../FlowBuilderVariableSelector";
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -69,6 +71,7 @@ const FlowBuilderAddTextModal = ({ open, onSave, onUpdate, data, close }) => {
   const isMounted = useRef(true);
 
   const [activeModal, setActiveModal] = useState(false);
+  const [variableSelectorOpen, setVariableSelectorOpen] = useState(false);
 
   const [labels, setLabels] = useState({
     title: "Adicionar mensagem ao fluxo",
@@ -124,6 +127,15 @@ const FlowBuilderAddTextModal = ({ open, onSave, onUpdate, data, close }) => {
     }
   };
 
+  const insertVariable = (variable) => {
+    const cursorPosition = document.getElementById("message-text-field")?.selectionStart || textDig?.length || 0;
+    const newText = textDig 
+      ? textDig.slice(0, cursorPosition) + variable + textDig.slice(cursorPosition)
+      : variable;
+    setTextDig(newText);
+    setVariableSelectorOpen(false);
+  };
+
   return (
     <div className={classes.root}>
       <Dialog
@@ -136,6 +148,7 @@ const FlowBuilderAddTextModal = ({ open, onSave, onUpdate, data, close }) => {
         <Stack>
           <DialogContent dividers>
             <TextField
+              id="message-text-field"
               label={"Mensagem"}
               multiline
               rows={7}
@@ -147,6 +160,15 @@ const FlowBuilderAddTextModal = ({ open, onSave, onUpdate, data, close }) => {
               className={classes.textField}
               style={{ width: "95%" }}
             />
+            <Button
+              startIcon={<CodeIcon />}
+              onClick={() => setVariableSelectorOpen(true)}
+              style={{ marginTop: 8 }}
+              variant="outlined"
+              size="small"
+            >
+              Inserir Variável
+            </Button>
           </DialogContent>
           <DialogActions>
             <Button onClick={handleClose} color="secondary" variant="outlined">
@@ -164,6 +186,12 @@ const FlowBuilderAddTextModal = ({ open, onSave, onUpdate, data, close }) => {
           </DialogActions>
         </Stack>
       </Dialog>
+      
+      <FlowBuilderVariableSelector
+        open={variableSelectorOpen}
+        onClose={() => setVariableSelectorOpen(false)}
+        onSelectVariable={insertVariable}
+      />
     </div>
   );
 };

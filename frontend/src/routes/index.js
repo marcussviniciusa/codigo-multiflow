@@ -50,6 +50,7 @@ import FlowBuilder from "../pages/FlowBuilder";
 import FlowDefault from "../pages/FlowDefault";
 import CampaignsPhrase from "../pages/CampaignsPhrase";
 import { Plantao } from "../pages/Plantao";
+import WebhookLinks from "../pages/WebhookLinks";
 
 const Routes = () => {
   const [showCampaigns, setShowCampaigns] = useState(false);
@@ -205,6 +206,12 @@ const Routes = () => {
                   exact
                   path="/flowbuilder/:id?"
                   component={FlowBuilderConfig}
+                  isPrivate
+                />
+                <Route
+                  exact
+                  path="/webhook-links"
+                  component={WebhookLinks}
                   isPrivate
                 />
 
