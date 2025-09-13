@@ -81,6 +81,7 @@ routes.use(campaignSettingRoutes);
 routes.use(announcementRoutes);
 routes.use(chatRoutes);
 routes.use(chatBotRoutes);
+routes.use(webhookLinkRoutes);
 routes.use("/webhook", webHookRoutes);
 routes.use(subScriptionRoutes);
 routes.use(invoiceRoutes);
@@ -103,7 +104,6 @@ routes.use(flowDefaultRoutes);
 routes.use(webHook);
 routes.use(flowBuilder);
 routes.use(flowCampaignRoutes);
-routes.use(webhookLinkRoutes);
 routes.use(PlantaoRoutes);
 
 routes.post("/chats/backfill", ChatController.backfillChats);
