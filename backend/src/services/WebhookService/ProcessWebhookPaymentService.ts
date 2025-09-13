@@ -64,7 +64,10 @@ const ProcessWebhookPaymentService = async ({
     
     logger.info(`[WEBHOOK PAYMENT] Processing webhook for platform: ${webhookLink.platform}, event: ${eventType}`);
     
-    // 6. Criar ou atualizar contato se tivermos dados suficientes
+    // 6. Obter WhatsApp padrão
+    const defaultWhatsapp = await GetDefaultWhatsApp(webhookLink.companyId);
+    
+    // 7. Criar ou atualizar contato se tivermos dados suficientes
     let contact = null;
     let ticket = null;
     
@@ -85,17 +88,15 @@ const ProcessWebhookPaymentService = async ({
         
         logger.info(`[WEBHOOK PAYMENT] Contact created/updated: ${contact.id}`);
         
-        // 7. Criar ticket para o contato
-        const defaultWhatsapp = await GetDefaultWhatsApp(webhookLink.companyId);
+        // 8. Criar ticket para o contato
         
         if (defaultWhatsapp) {
           ticket = await CreateTicketService({
             contactId: contact.id,
-            companyId: webhookLink.companyId,
-            whatsappId: defaultWhatsapp.id,
             status: "open",
-            isBot: true,
-            channel: "whatsapp"
+            userId: 0,
+            companyId: webhookLink.companyId,
+            whatsappId: String(defaultWhatsapp.id)
           });
           
           logger.info(`[WEBHOOK PAYMENT] Ticket created: ${ticket.id}`);
@@ -132,19 +133,27 @@ const ProcessWebhookPaymentService = async ({
         };
         
         // Chamar ActionsWebhookService
-        await ActionsWebhookService({
-          companyId: webhookLink.companyId,
-          idFlow: flow.id,
-          nameFlow: flow.name,
-          numberPhrase: phoneNumber,
-          phrase: '',
-          idTicket: ticket?.id,
-          idContact: contact?.id,
-          dataWebhook: webhookData,
-          hashWebhookId: flowExecutionId,
-          ticket,
-          contact
-        });
+        const nodes = (flow.flow as any)?.["nodes"] || [];
+        const connections = (flow.flow as any)?.["connections"] || [];
+        
+        await ActionsWebhookService(
+          defaultWhatsapp?.id || 1,
+          flow.id,
+          webhookLink.companyId,
+          nodes,
+          connections,
+          'start',
+          webhookData,
+          {},
+          flowExecutionId,
+          '',
+          ticket?.id,
+          {
+            number: variables.customer_phone || '',
+            name: variables.customer_name || '',
+            email: variables.customer_email || ''
+          }
+        );
         
         flowTriggered = true;
         logger.info(`[WEBHOOK PAYMENT] Flow triggered successfully: ${flow.name}`);
