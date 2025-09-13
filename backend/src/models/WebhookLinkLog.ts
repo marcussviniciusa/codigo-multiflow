@@ -14,7 +14,9 @@ import WebhookLink from "./WebhookLink";
 import Company from "./Company";
 
 @Table({
-  tableName: "WebhookLinkLogs"
+  tableName: "WebhookLinkLogs",
+  timestamps: true,
+  updatedAt: false
 })
 export class WebhookLinkLog extends Model<WebhookLinkLog> {
   @PrimaryKey
