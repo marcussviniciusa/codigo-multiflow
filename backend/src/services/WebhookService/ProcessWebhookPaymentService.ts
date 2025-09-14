@@ -9,6 +9,20 @@ import CreateTicketService from "../TicketServices/CreateTicketService";
 import GetDefaultWhatsApp from "../../helpers/GetDefaultWhatsApp";
 import logger from "../../utils/logger";
 
+// Declaração global para flowVariables
+declare global {
+  namespace NodeJS {
+    interface Global {
+      flowVariables: Record<string, any>;
+    }
+  }
+}
+
+// Inicializar global.flowVariables se não existir
+if (!global.flowVariables) {
+  global.flowVariables = {};
+}
+
 interface ProcessRequest {
   webhookLink: WebhookLink;
   payload: any;
@@ -37,7 +51,10 @@ const ProcessWebhookPaymentService = async ({
   try {
     // 1. Extrair variáveis baseado na plataforma
     const variables = extractVariables(webhookLink.platform, payload);
-    
+
+    logger.info(`[WEBHOOK PAYMENT] Dados extraídos - Nome: ${variables.customer_name}, Email: ${variables.customer_email}, Telefone: ${variables.customer_phone}`);
+    logger.info(`[WEBHOOK PAYMENT] Produto: ${variables.product_name}, Valor: ${variables.transaction_amount}, Status: ${variables.transaction_status}`);
+
     // 2. Determinar tipo de evento
     const eventType = determineEventType(webhookLink.platform, payload);
     
@@ -65,8 +82,15 @@ const ProcessWebhookPaymentService = async ({
     logger.info(`[WEBHOOK PAYMENT] Processing webhook for platform: ${webhookLink.platform}, event: ${eventType}`);
     
     // 6. Obter WhatsApp padrão
-    const defaultWhatsapp = await GetDefaultWhatsApp(webhookLink.companyId);
-    
+    let defaultWhatsapp = null;
+    try {
+      defaultWhatsapp = await GetDefaultWhatsApp(webhookLink.companyId);
+      logger.info(`[WEBHOOK PAYMENT] WhatsApp padrão encontrado: ${defaultWhatsapp.id} (${defaultWhatsapp.name}) - Status: ${defaultWhatsapp.status}`);
+    } catch (error) {
+      logger.error(`[WEBHOOK PAYMENT] Erro ao obter WhatsApp padrão: ${error.message}`);
+      // Continuar sem WhatsApp para não bloquear o processamento
+    }
+
     // 7. Criar ou atualizar contato se tivermos dados suficientes
     let contact = null;
     let ticket = null;
@@ -75,38 +99,45 @@ const ProcessWebhookPaymentService = async ({
       try {
         // Limpar número de telefone (remover caracteres especiais)
         const cleanPhone = variables.customer_phone.replace(/\D/g, '');
-        
+
         // Adicionar código do país se não tiver
         const phoneNumber = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-        
+
+        logger.info(`[WEBHOOK PAYMENT] Tentando criar contato - Número: ${phoneNumber}, Nome: ${variables.customer_name || 'Cliente'}`);
+
         contact = await CreateContactService({
           name: variables.customer_name || 'Cliente',
           number: phoneNumber,
           email: variables.customer_email,
           companyId: webhookLink.companyId
         });
-        
+
         logger.info(`[WEBHOOK PAYMENT] Contact created/updated: ${contact.id}`);
-        
+
         // 8. Criar ticket para o contato
-        
+
         if (defaultWhatsapp) {
+          logger.info(`[WEBHOOK PAYMENT] Criando ticket - ContactId: ${contact.id}, WhatsAppId: ${defaultWhatsapp.id}, CompanyId: ${webhookLink.companyId}`);
+
           ticket = await CreateTicketService({
             contactId: contact.id,
             status: "open",
-            userId: 0,
+            userId: null,
             companyId: webhookLink.companyId,
             whatsappId: String(defaultWhatsapp.id)
           });
-          
+
           logger.info(`[WEBHOOK PAYMENT] Ticket created: ${ticket.id}`);
-          
+
           // Salvar ID do ticket nas variáveis
           global.flowVariables['webhook_ticket_id'] = ticket.id;
           global.flowVariables[`${flowExecutionId}_ticket_id`] = ticket.id;
+        } else {
+          logger.warn(`[WEBHOOK PAYMENT] Não foi possível criar ticket - WhatsApp padrão não encontrado`);
         }
       } catch (error) {
         logger.error(`[WEBHOOK PAYMENT] Error creating contact/ticket: ${error.message}`);
+        logger.error(`[WEBHOOK PAYMENT] Stack trace: ${error.stack}`);
       }
     }
     
@@ -119,7 +150,7 @@ const ProcessWebhookPaymentService = async ({
     
     // 9. Disparar Flow Builder
     let flowTriggered = false;
-    
+
     if (flow.flow && flow.flow['nodes'] && flow.flow['connections']) {
       try {
         // Preparar dados para o webhook
@@ -131,30 +162,121 @@ const ProcessWebhookPaymentService = async ({
           ticket_id: ticket?.id,
           contact_id: contact?.id
         };
-        
-        // Chamar ActionsWebhookService
+
+        // Extrair nodes e connections
         const nodes = (flow.flow as any)?.["nodes"] || [];
         const connections = (flow.flow as any)?.["connections"] || [];
-        
+
+        // Logs para debug
+        logger.info(`[WEBHOOK PAYMENT DEBUG] Flow ${flow.name} - Nodes count: ${nodes.length}`);
+        logger.info(`[WEBHOOK PAYMENT DEBUG] Connections count: ${connections.length}`);
+
+        if (nodes.length === 0) {
+          throw new Error("Flow não possui nós configurados");
+        }
+
+        // Encontrar o nó inicial (nó sem conexões de entrada)
+        let startNodeId = nodes.find((node: any) => {
+          const hasIncomingConnection = connections.some((conn: any) => conn.target === node.id);
+          return !hasIncomingConnection && node.type !== 'end';
+        })?.id;
+
+        // Se não encontrar nó sem conexões de entrada, usar o primeiro nó
+        if (!startNodeId && nodes.length > 0) {
+          startNodeId = nodes[0].id;
+          logger.warn(`[WEBHOOK PAYMENT] Nó inicial não encontrado por conexões, usando primeiro nó: ${startNodeId}`);
+        }
+
+        if (!startNodeId) {
+          throw new Error("Não foi possível determinar o nó inicial do flow");
+        }
+
+        logger.info(`[WEBHOOK PAYMENT] Nó inicial encontrado: ${startNodeId} (tipo: ${nodes.find((n: any) => n.id === startNodeId)?.type})`);
+
+        // Preparar objeto details corretamente
+        const details = {
+          inputs: [
+            { keyValue: "nome", data: "customer_name" },
+            { keyValue: "celular", data: "customer_phone" },
+            { keyValue: "email", data: "customer_email" }
+          ],
+          keysFull: Object.keys(webhookData)
+        };
+
+        // Verificar se temos um ticket ou criar um temporário se necessário
+        if (!ticket && defaultWhatsapp) {
+          logger.warn(`[WEBHOOK PAYMENT] Ticket não foi criado anteriormente, tentando criar agora`);
+
+          // Se não temos contato, criar um básico
+          if (!contact) {
+            try {
+              const phoneNumber = variables.customer_phone ?
+                (variables.customer_phone.startsWith('55') ? variables.customer_phone : `55${variables.customer_phone}`) :
+                `55${Date.now()}`;
+
+              contact = await CreateContactService({
+                name: variables.customer_name || 'Cliente Webhook',
+                number: phoneNumber,
+                email: variables.customer_email || '',
+                companyId: webhookLink.companyId
+              });
+
+              logger.info(`[WEBHOOK PAYMENT] Contato criado emergencialmente: ${contact.id}`);
+            } catch (error) {
+              logger.error(`[WEBHOOK PAYMENT] Erro ao criar contato emergencial: ${error.message}`);
+            }
+          }
+
+          // Criar ticket se temos contato
+          if (contact) {
+            try {
+              ticket = await CreateTicketService({
+                contactId: contact.id,
+                status: "open",
+                userId: null,
+                companyId: webhookLink.companyId,
+                whatsappId: String(defaultWhatsapp.id)
+              });
+
+              logger.info(`[WEBHOOK PAYMENT] Ticket criado emergencialmente: ${ticket.id}`);
+
+              // Salvar ID do ticket nas variáveis
+              global.flowVariables['webhook_ticket_id'] = ticket.id;
+              global.flowVariables[`${flowExecutionId}_ticket_id`] = ticket.id;
+            } catch (error) {
+              logger.error(`[WEBHOOK PAYMENT] Erro ao criar ticket emergencial: ${error.message}`);
+            }
+          }
+        }
+
+        // Só prosseguir se tivermos um ticket válido
+        if (!ticket) {
+          logger.error(`[WEBHOOK PAYMENT] Não foi possível criar ticket para executar o flow`);
+          throw new Error("Ticket não pôde ser criado para executar o flow");
+        }
+
+        logger.info(`[WEBHOOK PAYMENT] Executando flow com Ticket ID: ${ticket.id}, Contact ID: ${contact?.id}`);
+
+        // Chamar ActionsWebhookService com parâmetros corretos
         await ActionsWebhookService(
           defaultWhatsapp?.id || 1,
           flow.id,
           webhookLink.companyId,
           nodes,
           connections,
-          'start',
+          startNodeId,  // Usar o ID real do nó inicial
           webhookData,
-          {},
+          details,      // Passar details estruturado
           flowExecutionId,
           '',
-          ticket?.id,
+          ticket.id,    // Usar ticket.id em vez de ticket?.id
           {
             number: variables.customer_phone || '',
             name: variables.customer_name || '',
             email: variables.customer_email || ''
           }
         );
-        
+
         flowTriggered = true;
         logger.info(`[WEBHOOK PAYMENT] Flow triggered successfully: ${flow.name}`);
       } catch (error) {
