@@ -1,11 +1,12 @@
 import WebhookLink from "../../models/WebhookLink";
 import WebhookLinkLog from "../../models/WebhookLinkLog";
+import Contact from "../../models/Contact";
 import { FlowBuilderModel } from "../../models/FlowBuilder";
 import { ActionsWebhookService } from "./ActionsWebhookService";
 import { extractVariables, determineEventType, StandardizedPaymentData } from "../../utils/PaymentDataExtractor";
 import { generateHashWebhookId } from "../../utils/GenerateHashWebhookId";
 import CreateContactService from "../ContactServices/CreateContactService";
-import CreateTicketService from "../TicketServices/CreateTicketService";
+import CreateTicketServiceWebhook from "../TicketServices/CreateTicketServiceWebhook";
 import GetDefaultWhatsApp from "../../helpers/GetDefaultWhatsApp";
 import logger from "../../utils/logger";
 
@@ -103,28 +104,41 @@ const ProcessWebhookPaymentService = async ({
         // Adicionar código do país se não tiver
         const phoneNumber = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
 
-        logger.info(`[WEBHOOK PAYMENT] Tentando criar contato - Número: ${phoneNumber}, Nome: ${variables.customer_name || 'Cliente'}`);
+        logger.info(`[WEBHOOK PAYMENT] Procurando ou criando contato - Número: ${phoneNumber}, Nome: ${variables.customer_name || 'Cliente'}`);
 
-        contact = await CreateContactService({
-          name: variables.customer_name || 'Cliente',
-          number: phoneNumber,
-          email: variables.customer_email,
-          companyId: webhookLink.companyId
+        // Primeiro tentar encontrar contato existente
+        contact = await Contact.findOne({
+          where: {
+            number: phoneNumber,
+            companyId: webhookLink.companyId
+          }
         });
 
-        logger.info(`[WEBHOOK PAYMENT] Contact created/updated: ${contact.id}`);
+        if (contact) {
+          logger.info(`[WEBHOOK PAYMENT] Contato existente encontrado: ${contact.id}`);
+        } else {
+          // Se não encontrar, criar novo
+          contact = await CreateContactService({
+            name: variables.customer_name || 'Cliente',
+            number: phoneNumber,
+            email: variables.customer_email,
+            companyId: webhookLink.companyId
+          });
+          logger.info(`[WEBHOOK PAYMENT] Novo contato criado: ${contact.id}`);
+        }
 
         // 8. Criar ticket para o contato
 
         if (defaultWhatsapp) {
           logger.info(`[WEBHOOK PAYMENT] Criando ticket - ContactId: ${contact.id}, WhatsAppId: ${defaultWhatsapp.id}, CompanyId: ${webhookLink.companyId}`);
 
-          ticket = await CreateTicketService({
+          ticket = await CreateTicketServiceWebhook({
             contactId: contact.id,
             status: "open",
             userId: null,
             companyId: webhookLink.companyId,
-            whatsappId: String(defaultWhatsapp.id)
+            hashFlowId: flowExecutionId,
+            flowStopped: "0"
           });
 
           logger.info(`[WEBHOOK PAYMENT] Ticket created: ${ticket.id}`);
@@ -207,21 +221,37 @@ const ProcessWebhookPaymentService = async ({
         if (!ticket && defaultWhatsapp) {
           logger.warn(`[WEBHOOK PAYMENT] Ticket não foi criado anteriormente, tentando criar agora`);
 
-          // Se não temos contato, criar um básico
+          // Se não temos contato, tentar encontrar ou criar um básico
           if (!contact) {
             try {
-              const phoneNumber = variables.customer_phone ?
-                (variables.customer_phone.startsWith('55') ? variables.customer_phone : `55${variables.customer_phone}`) :
-                `55${Date.now()}`;
+              let phoneNumber;
+              if (variables.customer_phone) {
+                const cleanPhone = variables.customer_phone.replace(/\D/g, '');
+                phoneNumber = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+              } else {
+                phoneNumber = `55${Date.now()}`;
+              }
 
-              contact = await CreateContactService({
-                name: variables.customer_name || 'Cliente Webhook',
-                number: phoneNumber,
-                email: variables.customer_email || '',
-                companyId: webhookLink.companyId
+              // Primeiro tentar encontrar contato existente
+              contact = await Contact.findOne({
+                where: {
+                  number: phoneNumber,
+                  companyId: webhookLink.companyId
+                }
               });
 
-              logger.info(`[WEBHOOK PAYMENT] Contato criado emergencialmente: ${contact.id}`);
+              if (contact) {
+                logger.info(`[WEBHOOK PAYMENT] Contato existente encontrado emergencialmente: ${contact.id}`);
+              } else {
+                // Se não encontrar, criar novo
+                contact = await CreateContactService({
+                  name: variables.customer_name || 'Cliente Webhook',
+                  number: phoneNumber,
+                  email: variables.customer_email || '',
+                  companyId: webhookLink.companyId
+                });
+                logger.info(`[WEBHOOK PAYMENT] Contato criado emergencialmente: ${contact.id}`);
+              }
             } catch (error) {
               logger.error(`[WEBHOOK PAYMENT] Erro ao criar contato emergencial: ${error.message}`);
             }
@@ -230,12 +260,13 @@ const ProcessWebhookPaymentService = async ({
           // Criar ticket se temos contato
           if (contact) {
             try {
-              ticket = await CreateTicketService({
+              ticket = await CreateTicketServiceWebhook({
                 contactId: contact.id,
                 status: "open",
                 userId: null,
                 companyId: webhookLink.companyId,
-                whatsappId: String(defaultWhatsapp.id)
+                hashFlowId: flowExecutionId,
+                flowStopped: "0"
               });
 
               logger.info(`[WEBHOOK PAYMENT] Ticket criado emergencialmente: ${ticket.id}`);
