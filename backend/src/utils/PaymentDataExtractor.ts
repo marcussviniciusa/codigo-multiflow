@@ -128,12 +128,25 @@ const extractKiwifyVariables = (payload: any): StandardizedPaymentData => {
 
 // HOTMART
 const extractHotmartVariables = (payload: any): StandardizedPaymentData => {
+  // Construir telefone da Hotmart corretamente
+  const buyer = payload.data?.buyer || payload.buyer || {};
+  let phone = '';
+
+  if (buyer.checkout_phone_code && buyer.checkout_phone) {
+    // Combinar código de área + número
+    const phoneCode = buyer.checkout_phone_code.replace(/\D/g, '');
+    const phoneNumber = buyer.checkout_phone.replace(/\D/g, '');
+    phone = phoneCode + phoneNumber;
+  } else if (buyer.phone) {
+    phone = buyer.phone;
+  }
+
   return {
-    customer_name: payload.data?.buyer?.name || payload.buyer?.name || '',
-    customer_email: payload.data?.buyer?.email || payload.buyer?.email || '',
-    customer_phone: payload.data?.buyer?.phone || payload.buyer?.phone || '',
-    customer_cpf: payload.data?.buyer?.document || payload.buyer?.document || '',
-    customer_first_name: (payload.data?.buyer?.name || payload.buyer?.name || '').split(' ')[0],
+    customer_name: buyer.name || '',
+    customer_email: buyer.email || '',
+    customer_phone: phone,
+    customer_cpf: buyer.document || '',
+    customer_first_name: (buyer.name || '').split(' ')[0],
     
     product_name: payload.data?.product?.name || payload.product?.name || '',
     product_id: String(payload.data?.product?.id || payload.product?.id || ''),
